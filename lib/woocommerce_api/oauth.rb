@@ -10,7 +10,7 @@ module WooCommerce
 
     def initialize url, method, version, consumer_key, consumer_secret, signature_method = "HMAC-SHA256"
       @url = url
-      @method = method.upcase
+      @method = method
       @version = version
       @consumer_key = consumer_key
       @consumer_secret = consumer_secret
@@ -66,7 +66,6 @@ module WooCommerce
       query_string = query_params
         .join("%26")
       string_to_sign = "#{@method}&#{base_request_uri}&#{query_string}"
-
       if !["v1", "v2"].include? @version
         consumer_secret = "#{@consumer_secret}&"
       else

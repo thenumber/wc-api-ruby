@@ -97,7 +97,7 @@ module WooCommerce
 
       endpoint += "?" unless endpoint.include? "?"
       endpoint += "&" unless endpoint.end_with? "?"
-      endpoint + URI.encode(flatten_hash(data).join("&"))
+      endpoint + flatten_hash(data).join("&")
     end
 
     # Internal: Get URL for requests
@@ -106,13 +106,17 @@ module WooCommerce
     # method   - The method used in the url (for oauth querys)
     #
     # Returns the endpoint String.
-    def get_url endpoint, method
-      api = @wp_api ? 'wp-json' : 'wc-api'
-      url = @url
-      url = "#{url}/" unless url.end_with? "/"
-      url = "#{url}#{api}/#{@version}/#{endpoint}"
+    def get_url endpoint
+      url = "#{@url}#{get_path(endpoint)}"
+    end
 
-      @is_ssl ? url : oauth_url(url, method)
+    def get_path endpoint
+      api = if (@wp_api.class == String)
+        @wp_api
+      else
+        @wp_api ? 'wp-json' : 'wc-api'
+      end
+      "#{@url.end_with?("/") ? "" : "/"}#{api}/#{@version}/#{endpoint}"
     end
 
     # Internal: Requests default options.
@@ -123,7 +127,14 @@ module WooCommerce
     #
     # Returns the response in JSON String.
     def do_request method, endpoint, data = {}
-      url = get_url(endpoint, method)
+      url = get_url(endpoint)
+      path = get_path(endpoint)
+      headers = {
+        "User-Agent" => "WooCommerce API Client-Ruby/#{WooCommerce::VERSION}",
+        "Accept" => "application/json"
+      }
+      headers["Content-Type"] = "application/json;charset=utf-8" if !data.empty?
+
       options = {
         format: :json
       }
@@ -131,12 +142,6 @@ module WooCommerce
       # Allow custom HTTParty args.
       options = options.merge(@httparty_args)
 
-      # Set headers.
-      options[:headers] = {
-        "User-Agent" => "WooCommerce API Client-Ruby/#{WooCommerce::VERSION}",
-        "Accept" => "application/json"
-      }
-      options[:headers]["Content-Type"] = "application/json;charset=utf-8" if !data.empty?
 
       # Set basic authentication.
       if @is_ssl
@@ -153,7 +158,17 @@ module WooCommerce
             password: @consumer_secret
           })
         end
+      else
+        arguments = []
+        arguments.push(data) if %i[post put patch].include?(method)
+        arguments.push(headers)
+        consumer = ::OAuth::Consumer.new(@consumer_key, @consumer_secret, site: @url)
+        req = consumer.create_signed_request(method, path, nil, {}, *arguments)
+        headers = req.each_header.to_h
       end
+
+      # Set headers.
+      options[:headers] = headers
 
       options.merge!(debug_output: $stdout) if @debug_mode
       options.merge!(body: data.to_json) if !data.empty?
